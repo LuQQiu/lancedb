@@ -243,7 +243,7 @@ impl RestfulLanceDbClient<Sender> {
         )?;
         let read_timeout = Self::get_timeout(
             client_config.timeout_config.read_timeout,
-            "LANCE_CLIENT_READ_TIMEOUT",
+            "LANCE_CLIENT_READ_TIMEOUT",src/rust/core/src/error.rs
             Duration::from_secs(300),
         )?;
         let pool_idle_timeout = Self::get_timeout(
@@ -263,7 +263,7 @@ impl RestfulLanceDbClient<Sender> {
                 region,
                 db_name,
                 host_override.is_some(),
-                db_prefix
+                db_prefix,
             )?)
             .user_agent(client_config.user_agent)
             .build()
@@ -327,7 +327,10 @@ impl<S: HttpSend> RestfulLanceDbClient<S> {
             headers.insert(
                 "x-lancedb-database-prefix",
                 HeaderValue::from_str(db_prefix.unwrap()).map_err(|_| Error::InvalidInput {
-                    message: format!("non-ascii database prefix '{}' provided", db_prefix.unwrap()),
+                    message: format!(
+                        "non-ascii database prefix '{}' provided",
+                        db_prefix.unwrap()
+                    ),
                 })?,
             );
         }

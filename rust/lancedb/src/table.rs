@@ -989,7 +989,7 @@ impl Table {
     ) -> Result<Arc<dyn ExecutionPlan>> {
         if plans.is_empty() {
             return Err(Error::InvalidInput {
-                message: "No plans provided".to_string(),
+                message: " FNo plans provided".to_string(),
             });
         }
         // Projection to keeping all existing columns
