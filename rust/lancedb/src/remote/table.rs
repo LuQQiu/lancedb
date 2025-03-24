@@ -289,7 +289,7 @@ impl<S: HttpSend> RemoteTable<S> {
                     let mut bodies = Vec::with_capacity(query.query_vector.len());
                     for vector in &query.query_vector {
                         let mut body = body.clone();
-                        body["vector"] = vector_to_json(vector)?;
+                        body["vector1"] = vector_to_json(vector)?;
                         bodies.push(body);
                     }
                     bodies
