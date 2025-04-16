@@ -9,6 +9,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use lance::dataset::{ReadParams, WriteMode};
 use lance::io::{ObjectStore, ObjectStoreParams, ObjectStoreRegistry, WrappingObjectStore};
+use lance::session::Session;
 use lance_datafusion::utils::StreamingWriteSource;
 use lance_encoding::version::LanceFileVersion;
 use lance_table::io::commit::commit_handler_from_url;
@@ -201,7 +202,7 @@ impl ListingDatabaseOptionsBuilder {
 /// We will have two tables named `table1` and `table2`.
 #[derive(Debug)]
 pub struct ListingDatabase {
-    object_store: ObjectStore,
+    object_store: Arc<ObjectStore>,
     query_string: Option<String>,
 
     pub(crate) uri: String,
