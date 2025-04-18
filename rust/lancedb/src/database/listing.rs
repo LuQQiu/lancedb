@@ -9,7 +9,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use lance::dataset::{ReadParams, WriteMode};
 use lance::io::{ObjectStore, ObjectStoreParams, ObjectStoreRegistry, WrappingObjectStore};
-use lance::session::Session;
 use lance_datafusion::utils::StreamingWriteSource;
 use lance_encoding::version::LanceFileVersion;
 use lance_table::io::commit::commit_handler_from_url;

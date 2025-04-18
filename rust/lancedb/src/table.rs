@@ -29,7 +29,6 @@ use lance::dataset::{
 use lance::dataset::{MergeInsertBuilder as LanceMergeInsertBuilder, WhenNotMatchedBySource};
 use lance::index::vector::utils::infer_vector_dim;
 use lance::io::WrappingObjectStore;
-use lance::session::Session;
 use lance_datafusion::exec::{analyze_plan as lance_analyze_plan, execute_plan};
 use lance_datafusion::utils::StreamingWriteSource;
 use lance_index::vector::hnsw::builder::HnswBuildParams;
