@@ -1381,7 +1381,7 @@ impl<S: HttpSend> BaseTable for RemoteTable<S> {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 struct MergeInsertRequest {
     on: String,
     when_matched_update_all: bool,
