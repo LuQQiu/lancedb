@@ -1279,6 +1279,55 @@ impl<S: HttpSend> BaseTable for RemoteTable<S> {
         Ok(result)
     }
 
+    async fn take(
+        &self,
+        indices: Vec<u64>,
+        columns: Option<Vec<String>>,
+    ) -> Result<Box<dyn RecordBatchReader + Send>> {
+        #[derive(Serialize)]
+        struct TakeRequest {
+            indices: Vec<u64>,
+            columns: Option<Vec<String>>,
+            version: Option<u64>,
+        }
+
+        let version = self.current_version().await;
+        let body = TakeRequest {
+            indices,
+            columns,
+            version,
+        };
+
+        let request = self
+            .client
+            .post(&format!("/v1/table/{}/take/", self.name))
+            .json(&body)
+            .header(CONTENT_TYPE, "application/json");
+
+        let (request_id, response) = self.send(request, true).await?;
+        let stream = self.read_arrow_stream(&request_id, response).await?;
+        
+        // Convert stream to RecordBatchReader
+        use futures::TryStreamExt;
+        let batches: Vec<_> = stream.try_collect().await
+            .map_err(|e| Error::InvalidInput { 
+                message: format!("Failed to collect Arrow stream: {}", e) 
+            })?;
+        let schema = if let Some(first_batch) = batches.first() {
+            first_batch.schema()
+        } else {
+            // Empty result, need to get schema from table
+            self.schema().await?
+        };
+        
+        let reader = Box::new(RecordBatchIterator::new(
+            batches.into_iter().map(Ok),
+            schema,
+        ));
+        
+        Ok(reader as Box<dyn RecordBatchReader + Send>)
+    }
+
     async fn list_indices(&self) -> Result<Vec<IndexConfig>> {
         // Make request to list the indices
         let mut request = self

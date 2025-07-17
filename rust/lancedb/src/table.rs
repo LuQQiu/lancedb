@@ -579,6 +579,12 @@ pub trait BaseTable: std::fmt::Display + std::fmt::Debug + Send + Sync {
     async fn alter_columns(&self, alterations: &[ColumnAlteration]) -> Result<AlterColumnsResult>;
     /// Drop columns from the table.
     async fn drop_columns(&self, columns: &[&str]) -> Result<DropColumnsResult>;
+    /// Take rows from the table by indices.
+    async fn take(
+        &self,
+        indices: Vec<u64>,
+        columns: Option<Vec<String>>,
+    ) -> Result<Box<dyn RecordBatchReader + Send>>;
     /// Get the version of the table.
     async fn version(&self) -> Result<u64>;
     /// Checkout a specific version of the table.
@@ -1076,6 +1082,23 @@ impl Table {
     /// ```
     pub fn query(&self) -> Query {
         Query::new(self.inner.clone())
+    }
+
+    /// Take rows from the table by indices.
+    /// 
+    /// This method retrieves specific rows from the table based on their
+    /// positional indices (0-based row numbers).
+    /// 
+    /// # Arguments
+    /// 
+    /// * `indices` - The indices of the rows to retrieve
+    /// * `columns` - Optional column selection. If None, all columns are returned.
+    pub async fn take(
+        &self,
+        indices: Vec<u64>,
+        columns: Option<Vec<String>>,
+    ) -> Result<Box<dyn RecordBatchReader + Send>> {
+        self.inner.take(indices, columns).await
     }
 
     /// Search the table with a given query vector.
@@ -2600,6 +2623,34 @@ impl BaseTable for NativeTable {
         Ok(DropColumnsResult {
             version: dataset.version().version,
         })
+    }
+
+    async fn take(
+        &self,
+        indices: Vec<u64>,
+        columns: Option<Vec<String>>,
+    ) -> Result<Box<dyn RecordBatchReader + Send>> {
+        let dataset = self.dataset.get().await?;
+        
+        // Create projection
+        let projection = if let Some(cols) = columns {
+            lance::dataset::ProjectionRequest::from_columns(cols, dataset.schema())
+        } else {
+            lance::dataset::ProjectionRequest::Schema(Arc::new(dataset.schema().clone()))
+        };
+        
+        // Perform take operation
+        let batch = dataset.take(&indices, projection).await?;
+        
+        // Convert to RecordBatchReader
+        let schema = batch.schema();
+        let batches = vec![batch];
+        let reader = Box::new(RecordBatchIterator::new(
+            batches.into_iter().map(Ok),
+            schema,
+        ));
+        
+        Ok(reader as Box<dyn RecordBatchReader + Send>)
     }
 
     async fn list_indices(&self) -> Result<Vec<IndexConfig>> {

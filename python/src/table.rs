@@ -563,6 +563,47 @@ impl Table {
         Query::new(self.inner_ref().unwrap().query())
     }
 
+    pub fn take<'a>(
+        self_: PyRef<'a, Self>,
+        indices: Vec<u64>,
+        columns: Option<Vec<String>>,
+    ) -> PyResult<Bound<'a, PyAny>> {
+        let inner = self_.inner_ref()?.clone();
+        
+        future_into_py(self_.py(), async move {
+            // Convert indices to the format expected by Lance
+            let projection = if let Some(cols) = columns {
+                lance::dataset::ProjectionRequest::from_columns(cols)
+            } else {
+                lance::dataset::ProjectionRequest::Schema(inner.schema().await.infer_error()?)
+            };
+            
+            // Get the Lance dataset
+            let dataset = inner
+                .dataset()
+                .await
+                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            
+            // Perform the take operation
+            let batch = dataset
+                .take(&indices, projection)
+                .await
+                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            
+            // Convert to RecordBatchReader
+            let schema = batch.schema();
+            let batches = vec![batch];
+            let reader = Box::new(arrow::record_batch::RecordBatchIterator::new(
+                batches.into_iter().map(Ok),
+                schema,
+            ));
+            
+            // Return as PyArrow RecordBatchReader
+            let stream = PyArrowType(reader as Box<dyn arrow::record_batch::RecordBatchReader + Send>);
+            Python::with_gil(|py| stream.to_pyarrow(py))
+        })
+    }
+
     #[getter]
     pub fn tags(&self) -> PyResult<Tags> {
         Ok(Tags::new(self.inner_ref()?.clone()))

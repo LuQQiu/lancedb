@@ -945,6 +945,55 @@ class Table(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def take(
+        self,
+        indices: Union[List[int], np.ndarray],
+        columns: Optional[Union[List[str], pa.Schema]] = None,
+    ) -> pa.RecordBatchReader:
+        """Take rows from the table by index.
+
+        This method retrieves specific rows from the table based on their
+        positional indices (0-based row numbers).
+
+        Parameters
+        ----------
+        indices : list of int or numpy array
+            The indices of the rows to retrieve. Must be non-negative integers
+            within the range [0, num_rows).
+        columns : list of str or pyarrow.Schema, optional
+            The columns to retrieve. If None, all columns are returned.
+            Can be a list of column names or a Schema for more complex projections.
+
+        Returns
+        -------
+        pa.RecordBatchReader
+            A RecordBatchReader containing the requested rows.
+
+        Examples
+        --------
+        >>> import lancedb
+        >>> db = lancedb.connect("./.lancedb")
+        >>> data = [
+        ...    {"id": 1, "name": "Alice", "score": 95.5},
+        ...    {"id": 2, "name": "Bob", "score": 87.2},
+        ...    {"id": 3, "name": "Charlie", "score": 92.1}
+        ... ]
+        >>> table = db.create_table("students", data)
+        >>> # Take specific rows by index
+        >>> reader = table.take([0, 2])
+        >>> reader.read_all().to_pandas()
+           id     name  score
+        0   1    Alice   95.5
+        1   3  Charlie   92.1
+        >>> # Take with column selection
+        >>> reader = table.take([1], columns=["name", "score"])
+        >>> reader.read_all().to_pandas()
+          name  score
+        0  Bob   87.2
+        """
+        raise NotImplementedError
+
     def merge_insert(self, on: Union[str, Iterable[str]]) -> LanceMergeInsertBuilder:
         """
         Returns a [`LanceMergeInsertBuilder`][lancedb.merge.LanceMergeInsertBuilder]

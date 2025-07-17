@@ -21,6 +21,7 @@ from lancedb.embeddings.base import EmbeddingFunctionConfig
 from lancedb.index import FTS, BTree, Bitmap, HnswSq, IvfFlat, IvfPq, LabelList
 from lancedb.remote.db import LOOP
 import pyarrow as pa
+import numpy as np
 
 from lancedb.common import DATA, VEC, VECTOR_COLUMN_NAME
 from lancedb.merge import LanceMergeInsertBuilder
@@ -616,6 +617,31 @@ class RemoteTable(Table):
 
     def stats(self):
         return LOOP.run(self._table.stats())
+
+    def take(
+        self,
+        indices: Union[List[int], np.ndarray],
+        columns: Optional[Union[List[str], pa.Schema]] = None,
+    ) -> pa.RecordBatchReader:
+        """Take rows from the table by index."""
+        # Convert numpy array to list if needed
+        if isinstance(indices, np.ndarray):
+            indices = indices.tolist()
+        
+        # Convert schema to column list if needed
+        if isinstance(columns, pa.Schema):
+            columns = columns.names
+        
+        async_iter = LOOP.run(self._table.take(indices, columns))
+        
+        def iter_sync():
+            try:
+                while True:
+                    yield LOOP.run(async_iter.__anext__())
+            except StopAsyncIteration:
+                return
+        
+        return pa.RecordBatchReader.from_batches(async_iter.schema, iter_sync())
 
     def uses_v2_manifest_paths(self) -> bool:
         raise NotImplementedError(
