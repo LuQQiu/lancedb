@@ -41,6 +41,7 @@ import pyarrow.dataset
 import pyarrow.compute as pc
 import pyarrow.fs as pa_fs
 import numpy as np
+import pandas as pd
 
 from .common import DATA, VEC, VECTOR_COLUMN_NAME
 from .embeddings import EmbeddingFunctionConfig, EmbeddingFunctionRegistry
@@ -1167,6 +1168,32 @@ class Table(ABC):
         on_bad_vectors: OnBadVectorsType,
         fill_value: float,
     ) -> MergeResult: ...
+
+    @abstractmethod
+    def take(
+        self,
+        indices: Union[List[int], np.ndarray],
+        columns: Optional[List[str]] = None,
+    ) -> pa.RecordBatchReader:
+        """Take rows from the table by indices.
+
+        This method retrieves specific rows from the table based on their
+        positional indices (0-based row numbers).
+
+        Parameters
+        ----------
+        indices : list of int or numpy.ndarray
+            The indices of the rows to retrieve.
+        columns : list of str, optional
+            The columns to include in the result. If None, all columns
+            are returned.
+
+        Returns
+        -------
+        pyarrow.RecordBatchReader
+            A RecordBatchReader yielding the selected rows.
+        """
+        ...
 
     @abstractmethod
     def delete(self, where: str) -> DeleteResult:
@@ -2545,6 +2572,46 @@ class LanceTable(Table):
     def delete(self, where: str) -> DeleteResult:
         return LOOP.run(self._table.delete(where))
 
+    def take(
+        self,
+        indices: Union[List[int], np.ndarray],
+        columns: Optional[List[str]] = None,
+    ) -> pa.RecordBatchReader:
+        """
+        Take rows from the table by indices.
+
+        This method retrieves specific rows from the table based on their
+        positional indices (0-based row numbers).
+
+        Parameters
+        ----------
+        indices : list of int or numpy.ndarray
+            The indices of the rows to retrieve.
+        columns : list of str, optional
+            The columns to include in the result. If None, all columns
+            are returned.
+
+        Returns
+        -------
+        pyarrow.RecordBatchReader
+            A RecordBatchReader yielding the selected rows.
+
+        Examples
+        --------
+        >>> import lancedb
+        >>> db = lancedb.connect("./.lancedb")
+        >>> table = db.open_table("my_table")
+        >>> # Take rows at indices 0, 2, and 4
+        >>> reader = table.take([0, 2, 4])
+        >>> result = reader.read_all()
+        >>> print(result)
+        """
+        return LOOP.run(
+            self._table.take(
+                indices, columns
+            )
+        )
+
     def update(
         self,
         where: Optional[str] = None,
@@ -3850,6 +3917,45 @@ class AsyncTable:
         0  3  [5.0, 6.0]
         """
         return await self._inner.delete(where)
+
+    async def take(
+        self,
+        indices: Union[List[int], np.ndarray],
+        columns: Optional[List[str]] = None,
+    ) -> pa.RecordBatchReader:
+        """
+        Take rows from the table by indices.
+
+        This method retrieves specific rows from the table based on their
+        positional indices (0-based row numbers).
+
+        Parameters
+        ----------
+        indices : list of int or numpy.ndarray
+            The indices of the rows to retrieve.
+        columns : list of str, optional
+            The columns to include in the result. If None, all columns
+            are returned.
+
+        Returns
+        -------
+        pyarrow.RecordBatchReader
+            A RecordBatchReader yielding the selected rows.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> import lancedb
+        >>> async def take_example():
+        ...     db = await lancedb.connect_async("./.lancedb")
+        ...     table = await db.open_table("my_table")
+        ...     # Take rows at indices 0, 2, and 4
+        ...     reader = await table.take([0, 2, 4])
+        ...     result = reader.read_all()
+        ...     print(result)
+        >>> asyncio.run(take_example())
+        """
+        return await self._inner.take(indices, columns)
 
     async def update(
         self,

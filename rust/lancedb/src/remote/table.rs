@@ -14,14 +14,15 @@ use crate::table::Tags;
 use crate::table::UpdateResult;
 use crate::table::{AddDataMode, AnyQuery, Filter, TableStatistics};
 use crate::utils::{supported_btree_data_type, supported_vector_data_type};
-use crate::{DistanceType, Error, Table};
+use crate::{arrow::{SendableRecordBatchStream as LanceDBSendableRecordBatchStream, IntoArrowStream}, DistanceType, Error, Table};
 use arrow_array::{RecordBatch, RecordBatchIterator, RecordBatchReader};
 use arrow_ipc::reader::FileReader;
 use arrow_schema::{DataType, SchemaRef};
 use async_trait::async_trait;
 use datafusion_common::DataFusionError;
-use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion_physical_plan::{ExecutionPlan, RecordBatchStream, SendableRecordBatchStream};
+use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
+use std::pin::Pin;
 use futures::TryStreamExt;
 use http::header::CONTENT_TYPE;
 use http::{HeaderName, StatusCode};
@@ -35,7 +36,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Number;
 use std::collections::HashMap;
 use std::io::Cursor;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -1283,7 +1283,7 @@ impl<S: HttpSend> BaseTable for RemoteTable<S> {
         &self,
         indices: Vec<u64>,
         columns: Option<Vec<String>>,
-    ) -> Result<SendableRecordBatchStream> {
+    ) -> Result<LanceDBSendableRecordBatchStream> {
         #[derive(Serialize)]
         struct TakeRequest {
             indices: Vec<u64>,
@@ -1306,7 +1306,9 @@ impl<S: HttpSend> BaseTable for RemoteTable<S> {
 
         let (request_id, response) = self.send(request, true).await?;
         let stream = self.read_arrow_stream(&request_id, response).await?;
-        Ok(stream)
+        
+        // Convert DataFusion stream to LanceDB stream
+        stream.into_arrow()
     }
 
     async fn list_indices(&self) -> Result<Vec<IndexConfig>> {

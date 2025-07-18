@@ -10,7 +10,6 @@ use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use async_trait::async_trait;
 use datafusion_expr::Expr;
 use datafusion_physical_plan::display::DisplayableExecutionPlan;
-use datafusion_physical_plan::memory::MemoryStream;
 use datafusion_physical_plan::projection::ProjectionExec;
 use datafusion_physical_plan::repartition::RepartitionExec;
 use datafusion_physical_plan::union::UnionExec;
@@ -89,10 +88,9 @@ use lance::dataset::statistics::DatasetStatisticsExt;
 use lance_index::frag_reuse::FRAG_REUSE_INDEX_NAME;
 pub use lance_index::optimize::OptimizeOptions;
 use serde_with::skip_serializing_none;
-use crate::{arrow::SendableRecordBatchStream};
+use crate::arrow::{SendableRecordBatchStream, SimpleRecordBatchStream};
 
 use futures::stream;
-use lance_io::stream::RecordBatchStreamAdapter;
 
 /// Defines the type of column
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2634,7 +2632,7 @@ impl BaseTable for NativeTable {
         &self,
         indices: Vec<u64>,
         columns: Option<Vec<String>>,
-    ) -> Result<DatasetRecordBatchStream> {
+    ) -> Result<SendableRecordBatchStream> {
         let dataset = self.dataset.get().await?;
 
         // Create projection
@@ -2645,14 +2643,9 @@ impl BaseTable for NativeTable {
         };
 
         let batch = dataset.take(&indices, projection).await?;
-
-        // Perform take operation
-        let stream = Box::pin(MemoryStream::try_new(
-            vec![batch.clone()],
-            batch.schema(),
-            None
-        ).map_err(|e| Error::Runtime { message: format!("failed to create memory stream: {}", e) })?);
-        Ok(stream)
+        let schema = batch.schema();
+        let stream = stream::once(async move { Ok(batch) });
+        Ok(Box::pin(SimpleRecordBatchStream::new(stream, schema)))
     }
 
     async fn list_indices(&self) -> Result<Vec<IndexConfig>> {
