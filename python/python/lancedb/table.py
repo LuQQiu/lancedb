@@ -1170,32 +1170,6 @@ class Table(ABC):
     ) -> MergeResult: ...
 
     @abstractmethod
-    def take(
-        self,
-        indices: Union[List[int], np.ndarray],
-        columns: Optional[List[str]] = None,
-    ) -> pa.RecordBatchReader:
-        """Take rows from the table by indices.
-
-        This method retrieves specific rows from the table based on their
-        positional indices (0-based row numbers).
-
-        Parameters
-        ----------
-        indices : list of int or numpy.ndarray
-            The indices of the rows to retrieve.
-        columns : list of str, optional
-            The columns to include in the result. If None, all columns
-            are returned.
-
-        Returns
-        -------
-        pyarrow.RecordBatchReader
-            A RecordBatchReader yielding the selected rows.
-        """
-        ...
-
-    @abstractmethod
     def delete(self, where: str) -> DeleteResult:
         """Delete rows from the table.
 
@@ -2606,11 +2580,18 @@ class LanceTable(Table):
         >>> result = reader.read_all()
         >>> print(result)
         """
-        return LOOP.run(
-            self._table.take(
-                indices, columns
-            )
+        async_iter = LOOP.run(
+            self._table.take(indices, columns)
         )
+
+        def iter_sync():
+            try:
+                while True:
+                    yield LOOP.run(async_iter.__anext__())
+            except StopAsyncIteration:
+                return
+
+        return pa.RecordBatchReader.from_batches(async_iter.schema, iter_sync())
 
     def update(
         self,
