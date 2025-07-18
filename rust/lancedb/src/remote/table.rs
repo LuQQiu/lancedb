@@ -1283,7 +1283,7 @@ impl<S: HttpSend> BaseTable for RemoteTable<S> {
         &self,
         indices: Vec<u64>,
         columns: Option<Vec<String>>,
-    ) -> Result<Box<dyn RecordBatchReader + Send>> {
+    ) -> Result<SendableRecordBatchStream> {
         #[derive(Serialize)]
         struct TakeRequest {
             indices: Vec<u64>,
@@ -1306,28 +1306,7 @@ impl<S: HttpSend> BaseTable for RemoteTable<S> {
 
         let (request_id, response) = self.send(request, true).await?;
         let stream = self.read_arrow_stream(&request_id, response).await?;
-
-        // Convert stream to RecordBatchReader
-        use futures::TryStreamExt;
-        let batches: Vec<_> = stream
-            .try_collect()
-            .await
-            .map_err(|e| Error::InvalidInput {
-                message: format!("Failed to collect Arrow stream: {}", e),
-            })?;
-        let schema = if let Some(first_batch) = batches.first() {
-            first_batch.schema()
-        } else {
-            // Empty result, need to get schema from table
-            self.schema().await?
-        };
-
-        let reader = Box::new(RecordBatchIterator::new(
-            batches.into_iter().map(Ok),
-            schema,
-        ));
-
-        Ok(reader as Box<dyn RecordBatchReader + Send>)
+        Ok(stream)
     }
 
     async fn list_indices(&self) -> Result<Vec<IndexConfig>> {

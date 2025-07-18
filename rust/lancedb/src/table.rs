@@ -10,6 +10,7 @@ use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use async_trait::async_trait;
 use datafusion_expr::Expr;
 use datafusion_physical_plan::display::DisplayableExecutionPlan;
+use datafusion_physical_plan::memory::MemoryStream;
 use datafusion_physical_plan::projection::ProjectionExec;
 use datafusion_physical_plan::repartition::RepartitionExec;
 use datafusion_physical_plan::union::UnionExec;
@@ -88,6 +89,10 @@ use lance::dataset::statistics::DatasetStatisticsExt;
 use lance_index::frag_reuse::FRAG_REUSE_INDEX_NAME;
 pub use lance_index::optimize::OptimizeOptions;
 use serde_with::skip_serializing_none;
+use crate::{arrow::SendableRecordBatchStream};
+
+use futures::stream;
+use lance_io::stream::RecordBatchStreamAdapter;
 
 /// Defines the type of column
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -584,7 +589,7 @@ pub trait BaseTable: std::fmt::Display + std::fmt::Debug + Send + Sync {
         &self,
         indices: Vec<u64>,
         columns: Option<Vec<String>>,
-    ) -> Result<Box<dyn RecordBatchReader + Send>>;
+    ) -> Result<SendableRecordBatchStream>;
     /// Get the version of the table.
     async fn version(&self) -> Result<u64>;
     /// Checkout a specific version of the table.
@@ -1097,7 +1102,7 @@ impl Table {
         &self,
         indices: Vec<u64>,
         columns: Option<Vec<String>>,
-    ) -> Result<Box<dyn RecordBatchReader + Send>> {
+    ) -> Result<SendableRecordBatchStream> {
         self.inner.take(indices, columns).await
     }
 
@@ -2629,7 +2634,7 @@ impl BaseTable for NativeTable {
         &self,
         indices: Vec<u64>,
         columns: Option<Vec<String>>,
-    ) -> Result<Box<dyn RecordBatchReader + Send>> {
+    ) -> Result<DatasetRecordBatchStream> {
         let dataset = self.dataset.get().await?;
 
         // Create projection
@@ -2639,18 +2644,15 @@ impl BaseTable for NativeTable {
             lance::dataset::ProjectionRequest::Schema(Arc::new(dataset.schema().clone()))
         };
 
-        // Perform take operation
         let batch = dataset.take(&indices, projection).await?;
 
-        // Convert to RecordBatchReader
-        let schema = batch.schema();
-        let batches = vec![batch];
-        let reader = Box::new(RecordBatchIterator::new(
-            batches.into_iter().map(Ok),
-            schema,
-        ));
-
-        Ok(reader as Box<dyn RecordBatchReader + Send>)
+        // Perform take operation
+        let stream = Box::pin(MemoryStream::try_new(
+            vec![batch.clone()],
+            batch.schema(),
+            None
+        ).map_err(|e| Error::Runtime { message: format!("failed to create memory stream: {}", e) })?);
+        Ok(stream)
     }
 
     async fn list_indices(&self) -> Result<Vec<IndexConfig>> {

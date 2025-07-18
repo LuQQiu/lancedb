@@ -3,14 +3,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    error::PythonErrorExt,
-    index::{extract_index_params, IndexConfig},
-    query::Query,
+    arrow::RecordBatchStream, error::PythonErrorExt, index::{extract_index_params, IndexConfig}, query::Query
 };
 use arrow::{
+    array::RecordBatchReader,
     datatypes::{DataType, Schema},
     ffi_stream::ArrowArrayStreamReader,
     pyarrow::{FromPyArrow, PyArrowType, ToPyArrow},
+    record_batch::RecordBatch,
 };
 use lancedb::table::{
     AddDataMode, ColumnAlteration, Duration, NewColumnTransform, OptimizeAction, OptimizeOptions,
@@ -569,39 +569,9 @@ impl Table {
         columns: Option<Vec<String>>,
     ) -> PyResult<Bound<'a, PyAny>> {
         let inner = self_.inner_ref()?.clone();
-
         future_into_py(self_.py(), async move {
-            // Convert indices to the format expected by Lance
-            let projection = if let Some(cols) = columns {
-                lance::dataset::ProjectionRequest::from_columns(cols)
-            } else {
-                lance::dataset::ProjectionRequest::Schema(inner.schema().await.infer_error()?)
-            };
-
-            // Get the Lance dataset
-            let dataset = inner
-                .dataset()
-                .await
-                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-
-            // Perform the take operation
-            let batch = dataset
-                .take(&indices, projection)
-                .await
-                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-
-            // Convert to RecordBatchReader
-            let schema = batch.schema();
-            let batches = vec![batch];
-            let reader = Box::new(arrow::record_batch::RecordBatchIterator::new(
-                batches.into_iter().map(Ok),
-                schema,
-            ));
-
-            // Return as PyArrow RecordBatchReader
-            let stream =
-                PyArrowType(reader as Box<dyn arrow::record_batch::RecordBatchReader + Send>);
-            Python::with_gil(|py| stream.to_pyarrow(py))
+            let inner_stream = inner.take(indices, columns).await.infer_error()?;
+            Ok(RecordBatchStream::new(inner_stream))
         })
     }
 
