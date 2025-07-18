@@ -1085,12 +1085,12 @@ impl Table {
     }
 
     /// Take rows from the table by indices.
-    /// 
+    ///
     /// This method retrieves specific rows from the table based on their
     /// positional indices (0-based row numbers).
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `indices` - The indices of the rows to retrieve
     /// * `columns` - Optional column selection. If None, all columns are returned.
     pub async fn take(
@@ -2631,17 +2631,17 @@ impl BaseTable for NativeTable {
         columns: Option<Vec<String>>,
     ) -> Result<Box<dyn RecordBatchReader + Send>> {
         let dataset = self.dataset.get().await?;
-        
+
         // Create projection
         let projection = if let Some(cols) = columns {
             lance::dataset::ProjectionRequest::from_columns(cols, dataset.schema())
         } else {
             lance::dataset::ProjectionRequest::Schema(Arc::new(dataset.schema().clone()))
         };
-        
+
         // Perform take operation
         let batch = dataset.take(&indices, projection).await?;
-        
+
         // Convert to RecordBatchReader
         let schema = batch.schema();
         let batches = vec![batch];
@@ -2649,7 +2649,7 @@ impl BaseTable for NativeTable {
             batches.into_iter().map(Ok),
             schema,
         ));
-        
+
         Ok(reader as Box<dyn RecordBatchReader + Send>)
     }
 

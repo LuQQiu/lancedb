@@ -569,7 +569,7 @@ impl Table {
         columns: Option<Vec<String>>,
     ) -> PyResult<Bound<'a, PyAny>> {
         let inner = self_.inner_ref()?.clone();
-        
+
         future_into_py(self_.py(), async move {
             // Convert indices to the format expected by Lance
             let projection = if let Some(cols) = columns {
@@ -577,19 +577,19 @@ impl Table {
             } else {
                 lance::dataset::ProjectionRequest::Schema(inner.schema().await.infer_error()?)
             };
-            
+
             // Get the Lance dataset
             let dataset = inner
                 .dataset()
                 .await
                 .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-            
+
             // Perform the take operation
             let batch = dataset
                 .take(&indices, projection)
                 .await
                 .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-            
+
             // Convert to RecordBatchReader
             let schema = batch.schema();
             let batches = vec![batch];
@@ -597,9 +597,10 @@ impl Table {
                 batches.into_iter().map(Ok),
                 schema,
             ));
-            
+
             // Return as PyArrow RecordBatchReader
-            let stream = PyArrowType(reader as Box<dyn arrow::record_batch::RecordBatchReader + Send>);
+            let stream =
+                PyArrowType(reader as Box<dyn arrow::record_batch::RecordBatchReader + Send>);
             Python::with_gil(|py| stream.to_pyarrow(py))
         })
     }
