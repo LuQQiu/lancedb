@@ -1,25 +1,15 @@
-#!/usr/bin/env python3
-"""
-Test script to validate the new take functionality with row indices.
-"""
-import lancedb
-import pyarrow as pa
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright The LanceDB Authors
+
 import numpy as np
+import pyarrow as pa
+import pytest
+import lancedb
 
 
-def test_take_api():
-    """Test the take API with row indices."""
-    
-    print("Testing take API...")
-    
-    # Connect to lancedb server
-    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
-    
-    # Test data - create a simple table first
-    table_name = "test_take_table"
-    
-    # Create test data using pyarrow
-    data = pa.table({
+def create_test_data():
+    """Create test data for take operations."""
+    return pa.table({
         "id": pa.array([0, 1, 2, 3, 4], type=pa.int32()),
         "value": pa.array([10, 20, 30, 40, 50], type=pa.int32()),
         "name": pa.array(["alice", "bob", "charlie", "diana", "eve"], type=pa.string()),
@@ -29,141 +19,259 @@ def test_take_api():
                            [13.0, 14.0, 15.0, 16.0],
                            [17.0, 18.0, 19.0, 20.0]], type=pa.list_(pa.float32()))
     })
-    
-    # Try to create table
-    try:
-        # Drop table if exists
-        try:
-            db.drop_table(table_name)
-        except:
-            pass
-            
-        table = db.create_table(table_name, data)
-        print(f"✓ Created table {table_name}")
-    except Exception as e:
-        print(f"✗ Exception creating table: {e}")
-        return
-    
-    # Test 1: Take specific rows by indices
-    print("\n--- Test 1: Take rows by indices [0, 2, 4] ---")
-    try:
-        reader = table.take([0, 2, 4])
-        print("✓ Take request successful")
-        print(f"Reader type: {type(reader)}")
-        print(f"Reader schema: {reader.schema}")
-        result = reader.read_all()  # Convert RecordBatchReader to Table
-        print(f"✓ Retrieved {len(result)} rows")
-        print("Result data:")
-        print(result.to_pandas())
-        
-        # Verify we got the expected rows
-        expected_ids = [0, 2, 4]
-        actual_ids = result.column('id').to_pylist()
-        if actual_ids == expected_ids:
-            print("✓ Retrieved correct row indices")
-        else:
-            print(f"✗ Expected IDs {expected_ids}, got {actual_ids}")
-            
-    except Exception as e:
-        print(f"✗ Exception during take request: {e}")
-    
-    # Test 2: Take with column selection
-    print("\n--- Test 2: Take rows with column selection ---")
-    try:
-        reader = table.take([1, 3], columns=["id", "name"])
-        print("✓ Take with column selection successful")
-        result = reader.read_all()  # Convert RecordBatchReader to Table
-        print(f"✓ Retrieved {len(result)} rows")
-        print(f"✓ Columns: {result.column_names}")
-        print("Result data:")
-        print(result.to_pandas())
-        
-        # Verify columns
-        expected_columns = ["id", "name"]
-        if result.column_names == expected_columns:
-            print("✓ Retrieved correct columns")
-        else:
-            print(f"✗ Expected columns {expected_columns}, got {result.column_names}")
-            
-    except Exception as e:
-        print(f"✗ Exception during column selection take: {e}")
-    
-    # Test 3: Empty indices (should return empty batch)
-    print("\n--- Test 3: Empty indices ---")
-    try:
-        reader = table.take([])
-        result = reader.read_all()  # Convert RecordBatchReader to Table
-        print(f"✓ Empty indices returned {len(result)} rows")
-        if len(result) == 0:
-            print("✓ Empty indices correctly handled")
-        else:
-            print(f"✗ Expected 0 rows for empty indices, got {len(result)}")
-            
-    except Exception as e:
-        print(f"✗ Exception during empty indices test: {e}")
-    
-    # Test 4: Large indices range
-    print("\n--- Test 4: Larger row indices range ---")
-    try:
-        reader = table.take(list(range(0, 5, 2)), columns=["value"])
-        print("✓ Large indices range successful")
-        result = reader.read_all()  # Convert RecordBatchReader to Table
-        print(f"✓ Retrieved {len(result)} rows")
-        print("Result data:")
-        print(result.to_pandas())
-        
-        expected_values = [10, 30, 50]  # values at indices 0, 2, 4
-        actual_values = result.column('value').to_pylist()
-        if actual_values == expected_values:
-            print("✓ Retrieved correct values")
-        else:
-            print(f"✗ Expected values {expected_values}, got {actual_values}")
-            
-    except Exception as e:
-        print(f"✗ Exception during large indices test: {e}")
-    
-    # Test 5: Test with larger dataset
-    print("\n--- Test 5: Create larger dataset and test take ---")
-    try:
-        # Create a larger table
-        large_table_name = "test_take_large"
-        try:
-            db.drop_table(large_table_name)
-        except:
-            pass
-            
-        # Create data with 10000 rows
-        n_rows = 10000
-        large_data = pa.table({
-            "id": pa.array(range(n_rows), type=pa.int32()),
-            "value": pa.array([i * 10 for i in range(n_rows)], type=pa.int32()),
-            "text": pa.array([f"row_{i}" for i in range(n_rows)], type=pa.string()),
-            "vector": pa.array([[float(i), float(i+1), float(i+2), float(i+3)] for i in range(n_rows)], 
-                             type=pa.list_(pa.float32()))
-        })
-        
-        large_table = db.create_table(large_table_name, large_data)
-        print(f"✓ Created large table {large_table_name} with {n_rows} rows")
-        
-        # Test taking scattered indices
-        scattered_indices = [0, 100, 500, 1000, 2500, 5000, 7500, 9999]
-        reader = large_table.take(scattered_indices, columns=["id", "text"])
-        
-        print("✓ Large table take request successful")
-        result = reader.read_all()  # Convert RecordBatchReader to Table
-        print(f"✓ Retrieved {len(result)} rows from large table")
-        print("Sample of results:")
-        print(result.to_pandas())
-        
-        # Verify we got the correct IDs
-        actual_ids = result.column('id').to_pylist()
-        if actual_ids == scattered_indices:
-            print("✓ Retrieved correct scattered indices from large table")
-        else:
-            print(f"✗ Expected IDs {scattered_indices}, got {actual_ids}")
-            
-    except Exception as e:
-        print(f"✗ Exception during large table test: {e}")
 
-if __name__ == "__main__":
-    test_take_api()
+
+def read_recordbatch_stream(result):
+    """Helper to read RecordBatchStream and convert to PyArrow Table."""
+    if hasattr(result, 'read_all'):
+        # Standard PyArrow RecordBatchReader
+        return result.read_all()
+    else:
+        # RecordBatchStream only supports async iteration
+        # For sync tests, we need to collect the data using asyncio
+        import asyncio
+        
+        async def collect_batches():
+            batches = []
+            async for batch in result:
+                batches.append(batch)
+            return batches
+        
+        batches = asyncio.run(collect_batches())
+        if batches:
+            return pa.Table.from_batches(batches, schema=result.schema)
+        return None
+
+
+def test_take_basic():
+    """Test basic take functionality with row indices."""
+    # Connect to remote database
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    
+    # Create table
+    data = create_test_data()
+    table = db.create_table("test_take", data=data, mode="overwrite")
+    
+    # Take specific rows
+    result = table.take([0, 2, 4])
+    result_table = read_recordbatch_stream(result)
+    
+    assert result_table is not None
+    assert len(result_table) == 3
+    
+    # Verify correct rows were returned
+    df = result_table.to_pandas()
+    assert df['id'].tolist() == [0, 2, 4]
+    assert df['value'].tolist() == [10, 30, 50]
+    assert df['name'].tolist() == ["alice", "charlie", "eve"]
+
+
+def test_take_with_columns():
+    """Test take with column selection."""
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = db.create_table("test_take_cols", data=data, mode="overwrite")
+    
+    # Take specific rows and columns
+    result = table.take([1, 3], columns=["id", "name"])
+    result_table = read_recordbatch_stream(result)
+    
+    assert result_table is not None
+    assert len(result_table) == 2
+    assert result_table.column_names == ["id", "name"]
+    
+    # Verify data
+    df = result_table.to_pandas()
+    assert df['id'].tolist() == [1, 3]
+    assert df['name'].tolist() == ["bob", "diana"]
+
+
+def test_take_with_schema_columns():
+    """Test take with columns specified as PyArrow schema."""
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = db.create_table("test_take_schema", data=data, mode="overwrite")
+    
+    # Create schema with subset of columns
+    schema = pa.schema([
+        pa.field("value", pa.int32()),
+        pa.field("vector", pa.list_(pa.float32()))
+    ])
+    
+    # Take with schema
+    result = table.take([0, 4], columns=schema)
+    result_table = read_recordbatch_stream(result)
+    
+    assert result_table is not None
+    assert len(result_table) == 2
+    assert set(result_table.column_names) == {"value", "vector"}
+    
+    # Verify data
+    df = result_table.to_pandas()
+    assert df['value'].tolist() == [10, 50]
+
+
+def test_take_numpy_indices():
+    """Test take with numpy array indices."""
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = db.create_table("test_take_numpy", data=data, mode="overwrite")
+    
+    # Use numpy array for indices
+    indices = np.array([1, 2, 3])
+    result = table.take(indices)
+    result_table = read_recordbatch_stream(result)
+    
+    assert result_table is not None
+    assert len(result_table) == 3
+    
+    # Verify correct rows
+    df = result_table.to_pandas()
+    assert df['id'].tolist() == [1, 2, 3]
+
+
+def test_take_single_index():
+    """Test take with a single index."""
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = db.create_table("test_take_single", data=data, mode="overwrite")
+    
+    # Take single row
+    result = table.take([2])
+    result_table = read_recordbatch_stream(result)
+    
+    assert result_table is not None
+    assert len(result_table) == 1
+    
+    # Verify data
+    df = result_table.to_pandas()
+    assert df['id'].tolist() == [2]
+    assert df['name'].tolist() == ["charlie"]
+
+
+def test_take_empty_indices():
+    """Test take with empty indices - should raise error."""
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = db.create_table("test_take_empty", data=data, mode="overwrite")
+    
+    # Empty indices should raise an error
+    with pytest.raises(Exception, match="indices cannot be empty"):
+        table.take([])
+
+
+def test_take_out_of_bounds():
+    """Test take with out of bounds indices."""
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = db.create_table("test_take_bounds", data=data, mode="overwrite")
+    
+    # Out of bounds indices should raise an error
+    with pytest.raises(Exception):
+        table.take([0, 10])  # Index 10 is out of bounds
+
+
+def test_take_duplicate_indices():
+    """Test take with duplicate indices."""
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = db.create_table("test_take_dup", data=data, mode="overwrite")
+    
+    # Take with duplicate indices
+    result = table.take([1, 1, 3, 3])
+    result_table = read_recordbatch_stream(result)
+    
+    assert result_table is not None
+    assert len(result_table) == 4
+    
+    # Verify duplicates are returned
+    df = result_table.to_pandas()
+    assert df['id'].tolist() == [1, 1, 3, 3]
+    assert df['name'].tolist() == ["bob", "bob", "diana", "diana"]
+
+
+def test_take_all_rows():
+    """Test take with all row indices."""
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = db.create_table("test_take_all", data=data, mode="overwrite")
+    
+    # Take all rows in order
+    result = table.take([0, 1, 2, 3, 4])
+    result_table = read_recordbatch_stream(result)
+    
+    assert result_table is not None
+    assert len(result_table) == 5
+    
+    # Should be same as original
+    assert result_table.to_pandas().equals(data.to_pandas())
+
+
+def test_take_reverse_order():
+    """Test take with indices in reverse order."""
+    db = lancedb.connect("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = db.create_table("test_take_reverse", data=data, mode="overwrite")
+    
+    # Take rows in reverse order
+    result = table.take([4, 3, 2, 1, 0])
+    result_table = read_recordbatch_stream(result)
+    
+    assert result_table is not None
+    assert len(result_table) == 5
+    
+    # Verify reverse order
+    df = result_table.to_pandas()
+    assert df['id'].tolist() == [4, 3, 2, 1, 0]
+    assert df['name'].tolist() == ["eve", "diana", "charlie", "bob", "alice"]
+
+
+@pytest.mark.asyncio
+async def test_take_async():
+    """Test async take functionality."""
+    # Connect to remote database asynchronously
+    db = await lancedb.connect_async("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    
+    # Create table
+    data = create_test_data()
+    table = await db.create_table("test_take_async", data=data, mode="overwrite")
+    
+    # Take specific rows
+    result = await table.take([0, 2, 4])
+    
+    # RecordBatchStream for async iteration
+    batches = []
+    async for batch in result:
+        batches.append(batch)
+    result_table = pa.Table.from_batches(batches, schema=result.schema)
+    
+    assert len(result_table) == 3
+    
+    # Verify correct rows were returned
+    df = result_table.to_pandas()
+    assert df['id'].tolist() == [0, 2, 4]
+
+
+@pytest.mark.asyncio
+async def test_take_async_with_columns():
+    """Test async take with column selection."""
+    db = await lancedb.connect_async("db://my-db", api_key="sk_localtest", host_override="http://localhost:10024")
+    data = create_test_data()
+    table = await db.create_table("test_take_async_cols", data=data, mode="overwrite")
+    
+    # Take specific rows and columns
+    result = await table.take([1, 3], columns=["id", "name"])
+    
+    # Collect batches from RecordBatchStream
+    batches = []
+    async for batch in result:
+        batches.append(batch)
+    result_table = pa.Table.from_batches(batches, schema=result.schema)
+    
+    assert len(result_table) == 2
+    assert result_table.column_names == ["id", "name"]
+    
+    # Verify data
+    df = result_table.to_pandas()
+    assert df['id'].tolist() == [1, 3]
+    assert df['name'].tolist() == ["bob", "diana"]
