@@ -632,16 +632,8 @@ class RemoteTable(Table):
         if isinstance(columns, pa.Schema):
             columns = columns.names
         
-        async_iter = LOOP.run(self._table.take(indices, columns))
-        
-        def iter_sync():
-            try:
-                while True:
-                    yield LOOP.run(async_iter.__anext__())
-            except StopAsyncIteration:
-                return
-        
-        return pa.RecordBatchReader.from_batches(async_iter.schema, iter_sync())
+        # The async take method returns a RecordBatchReader directly
+        return LOOP.run(self._table.take(indices, columns))
 
     def uses_v2_manifest_paths(self) -> bool:
         raise NotImplementedError(
