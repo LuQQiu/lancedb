@@ -3664,7 +3664,7 @@ impl<S: HttpSend> BaseTable for RemoteTable<S> {
     }
     /// Only `OptimizeAction::Compact` with default `options` and no custom
     /// `remap_options` is supported remotely: it submits a durable
-    /// compaction job through the server's `OPTIMIZE TABLE ... REWRITE DATA`
+    /// compaction job through the server's `OPTIMIZE ... REWRITE DATA`
     /// SQL statement, the same atomic, single-worker, index-safe path the
     /// server uses for its own automatic compaction. `.wait()` below waits
     /// for that SQL statement's own execution to finish, which only confirms
@@ -3710,8 +3710,8 @@ impl<S: HttpSend> BaseTable for RemoteTable<S> {
         if *options != lance::dataset::optimize::CompactionOptions::default() {
             return Err(Error::NotSupported {
                 message: "custom CompactionOptions are not supported in LanceDB \
-                          Enterprise; the OPTIMIZE TABLE ... REWRITE DATA SQL \
-                          statement has no WITH clause to carry them yet, so a \
+                          Enterprise; the OPTIMIZE ... REWRITE DATA SQL statement \
+                          has no WITH clause to carry them yet, so a \
                           non-default value would be silently ignored rather than \
                           applied. Omit options to use the server's managed \
                           compaction settings."
@@ -3721,10 +3721,7 @@ impl<S: HttpSend> BaseTable for RemoteTable<S> {
         let sql_client = self.sql_client.clone().ok_or_else(|| Error::NotSupported {
             message: "SQL is unavailable for this remote table client".to_string(),
         })?;
-        let mut statement = format!(
-            "OPTIMIZE TABLE {} REWRITE DATA",
-            quote_sql_identifier(&self.name)
-        );
+        let mut statement = format!("OPTIMIZE {} REWRITE DATA", quote_sql_identifier(&self.name));
         if let Some(branch) = &self.branch {
             statement.push_str(&format!(" WITH (branch = {})", quote_sql_string(branch)));
         }
